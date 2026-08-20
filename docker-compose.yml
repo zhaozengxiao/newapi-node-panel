@@ -1,0 +1,24 @@
+services:
+  newapi-node-manager:
+    build: .
+    container_name: newapi-node-manager
+    ports:
+      - "3434:3434"
+    volumes:
+      - ./data:/data
+    environment:
+      PG_HOST: postgres
+      PG_PORT: "5432"
+      PG_USER: root
+      PG_PASSWORD: "${PG_PASSWORD}"
+      PG_DB: new-api
+      NEWAPI_BASE: "http://new-api:3000"
+      DATA_DIR: /data
+      TZ: Asia/Shanghai
+    networks:
+      - new-api_new-api-network
+    restart: unless-stopped
+
+networks:
+  new-api_new-api-network:
+    external: true

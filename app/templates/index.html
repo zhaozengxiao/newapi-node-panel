@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>new-api 节点管理</title>
+<style>
+:root { --ok:#2e7d32; --warn:#f9a825; --bad:#c62828; --muted:#9e9e9e; --border:#e0e0e0; --bg:#f5f6f8; }
+* { box-sizing:border-box; }
+body { font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif; margin:0; background:var(--bg); color:#212121; font-size:14px; }
+header { background:#1a237e; color:#fff; padding:10px 20px; display:flex; align-items:center; gap:16px; }
+header h1 { font-size:18px; margin:0; flex:1; }
+header button, .btn { background:#3949ab; color:#fff; border:0; border-radius:4px; padding:6px 12px; cursor:pointer; font-size:13px; }
+header button:hover, .btn:hover { background:#5c6bc0; }
+.btn.sm { padding:2px 8px; font-size:12px; margin-right:4px; }
+.btn.ghost { background:#eee; color:#333; border:1px solid var(--border); }
+.btn.danger { background:#c62828; } .btn.ok { background:var(--ok); } .btn.warn { background:#ef6c00; }
+main { padding:16px 20px; max-width:1400px; margin:0 auto; }
+.card { background:#fff; border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:16px; }
+.card h2 { margin:0 0 10px; font-size:15px; color:#1a237e; }
+table { width:100%; border-collapse:collapse; }
+th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--border); font-size:13px; }
+th { background:#eceff1; position:sticky; top:0; }
+tr:hover { background:#f5f5f5; }
+.badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px; color:#fff; }
+.badge.b1 { background:var(--ok); } .badge.b2 { background:var(--muted); } .badge.b3 { background:var(--bad); }
+.filters { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+.filters select, .filters input { padding:5px 8px; border:1px solid var(--border); border-radius:4px; }
+.filters span.muted { color:var(--muted); }
+.detail { background:#fafafa; padding:10px; }
+.key-row { display:flex; align-items:center; gap:8px; padding:3px 0; font-size:12px; }
+.key-row .kidx { width:40px; color:var(--muted); }
+.key-row .kstatus { width:60px; }
+.key-row .kreason { flex:1; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.key-row code { background:#eceff1; padding:1px 6px; border-radius:3px; }
+.rule-form { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.rule-form input, .rule-form select { padding:5px 8px; border:1px solid var(--border); border-radius:4px; }
+.logs { font-family:Consolas,monospace; font-size:12px; max-height:260px; overflow-y:auto; }
+.logs .ok { color:var(--ok); } .logs .no { color:var(--bad); }
+.toast { position:fixed; top:60px; right:20px; background:#323232; color:#fff; padding:10px 16px; border-radius:6px; z-index:99; opacity:.95; }
+.spin { display:inline-block; width:12px; height:12px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:sp 1s linear infinite; vertical-align:-2px; }
+@keyframes sp { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ new-api 节点管理</h1>
+  <span id="conn" style="font-size:12px;opacity:.8"></span>
+  <button onclick="loadAll()">刷新</button>
+</header>
+<main>
+  <div class="card">
+    <h2>渠道节点
+      <span class="muted" id="stats" style="font-weight:normal;font-size:12px"></span>
+    </h2>
+    <div class="filters">
+      <select id="fStatus" onchange="render()">
+        <option value="">全部状态</option>
+        <option value="1">1-启用</option>
+        <option value="2">2-手动禁用</option>
+        <option value="3">3-自动禁用</option>
+      </select>
+      <input id="fKeyword" placeholder="搜索名称/模型/ID" oninput="render()">
+      <button class="btn ghost" onclick="batchOp('enable_full',{filter:'auto_disabled'})">一键启用全部自动禁用</button>
+      <button class="btn ghost" onclick="batchOp('enable',{filter:'auto_disabled'})">仅启用渠道</button>
+      <span class="muted" id="cnt"></span>
+    </div>
+    <div style="overflow-x:auto;max-height:480px">
+    <table id="tb">
+      <thead><tr>
+        <th>ID</th><th>名称</th><th>类型</th><th>状态</th><th>模型</th><th>key</th><th>响应ms</th><th>操作</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>定时规则</h2>
+    <div class="rule-form">
+      <input id="rName" placeholder="名称，如 kenari每日启用" style="width:150px">
+      <select id="rFreq" onchange="onFreqChange()">
+        <option value="daily">每天</option>
+        <option value="hourly">每小时</option>
+        <option value="30m">每30分钟</option>
+        <option value="weekly1">每周一</option>
+        <option value="weekly0">每周日</option>
+        <option value="monthly">每月1号</option>
+      </select>
+      <span id="timePick">
+        <select id="rHour"></select> 点
+        <select id="rMin"></select> 分
+      </span>
+      <select id="rAction">
+        <option value="enable_full">一键启用(含key)</option>
+        <option value="enable">启用渠道</option>
+        <option value="enable_keys">恢复全部key</option>
+        <option value="disable">禁用</option>
+        <option value="test">测试</option>
+        <option value="checkup">巡检(恢复key+测试+启用)</option>
+      </select>
+      <select id="rTarget">
+        <option value="auto_disabled">目标:全部自动禁用</option>
+        <option value="disabled">目标:全部禁用(2+3)</option>
+        <option value="all">目标:全部渠道</option>
+        <option value="ids:76">目标:指定渠道(逗号分隔)</option>
+      </select>
+      <input id="rIds" placeholder="渠道ID,如 76,57,58" style="width:150px;display:none">
+      <button class="btn ok" onclick="addRule()">新增规则</button>
+    </div>
+    <table>
+      <thead><tr><th>名称</th><th>cron</th><th>动作</th><th>目标</th><th>启用</th><th>操作</th></tr></thead>
+      <tbody id="ruleTb"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>操作日志 <button class="btn ghost sm" onclick="loadLogs()">刷新</button></h2>
+    <div class="logs" id="logBox"></div>
+  </div>
+</main>
+<div id="toast" class="toast" style="display:none"></div>
+
+<script>
+let CH = [];
+
+function toast(msg, ok=true){ const t=document.getElementById('toast'); t.textContent=(ok?'✓ ':'✗ ')+msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+async function api(path, opts={}){
+  const r = await fetch(path, Object.assign({headers:{'Content-Type':'application/json'}}, opts));
+  return r.json();
+}
+const stName = s => s===1?'启用':s===2?'手动禁用':s===3?'自动禁用':('?('+s+')');
+const stBadge = s => `<span class="badge b${s}">${stName(s)}</span>`;
+const typeName = t => ({1:'OpenAI',8:'OpenAI定制',17:'阿里百川',20:'OpenRouter',24:'Gemini',40:'硅基流动',43:'DeepSeek',58:'高级自定义',4:'Ollama'}[t]||'type'+t);
+
+async function loadChannels(){
+  try{
+    const d = await api('/api/channels');
+    if(!d.success){ toast('拉取渠道失败: '+d.message,false); return; }
+    CH = d.data||[];
+    const c1=CH.filter(c=>c.status===1).length, c3=CH.filter(c=>c.status===3).length;
+    document.getElementById('stats').textContent = `共${CH.length}个 | 启用${c1} | 自动禁用${c3}`;
+    document.getElementById('conn').textContent = 'API 正常';
+    render();
+  }catch(e){ document.getElementById('conn').textContent='连接失败'; toast('连接服务失败: '+e,false); }
+}
+
+function filtered(){
+  const st = document.getElementById('fStatus').value;
+  const kw = document.getElementById('fKeyword').value.trim().toLowerCase();
+  return CH.filter(c => (!st || String(c.status)===st) && (!kw ||
+    String(c.id).includes(kw) || (c.name||'').toLowerCase().includes(kw) ||
+    (c.models||'').toLowerCase().includes(kw)));
+}
+
+function render(){
+  const list = filtered();
+  document.getElementById('cnt').textContent = `当前 ${list.length} 个`;
+  const tb = document.querySelector('#tb tbody');
+  tb.innerHTML = list.map(c => `
+    <tr>
+      <td>${c.id}</td>
+      <td>${c.name||''}</td>
+      <td>${typeName(c.type)}</td>
+      <td>${stBadge(c.status)}</td>
+      <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(c.models||'').replace(/,/g,'\n')}">${(c.models||'').slice(0,80)}</td>
+      <td><button class="btn ghost sm" onclick="showKeys(${c.id})">查看</button></td>
+      <td>${c.response_time||'-'}</td>
+      <td>
+        <button class="btn ok sm" title="恢复全部key+启用渠道" onclick="op('enable_full',${c.id})">一键启用</button>
+        <button class="btn sm" onclick="op('enable',${c.id})">启用</button>
+        <button class="btn warn sm" onclick="op('disable',${c.id})">禁用</button>
+        <button class="btn ghost sm" onclick="op('test',${c.id})">测试</button>
+      </td>
+    </tr>
+    <tr id="keys-${c.id}" style="display:none"><td colspan="8"><div class="detail" id="keysc-${c.id}">加载中...</div></td></tr>
+  `).join('');
+}
+
+async function op(action, cid){
+  const b = document.querySelector(`#keys-${cid}`); if(b) b.style.display='none';
+  const d = await api(`/api/channels/${cid}/${action}`, {method:'POST', body:JSON.stringify({})});
+  toast(d.success ? (action==='test' ? `测试通过 time=${d.time}s` : d.message||'成功') : '失败: '+(d.message||'err'), d.success);
+  loadChannels(); loadLogs();
+}
+
+async function showKeys(cid){
+  const row = document.getElementById(`keys-${cid}`);
+  const box = document.getElementById(`keysc-${cid}`);
+  row.style.display = row.style.display==='none' ? '' : 'none';
+  if(row.style.display==='none') return;
+  const d = await api(`/api/channels/${cid}`);
+  const k = (d.data&&d.data.keys&&d.data.keys.keys)||[];
+  const cnt = (d.data&&d.data.keys)||{};
+  box.innerHTML = `
+    <div style="margin-bottom:6px;color:var(--muted)">启用 ${cnt.enabled_count||0} / 手动禁用 ${cnt.manual_disabled_count||0} / 自动禁用 ${cnt.auto_disabled_count||0}
+      <button class="btn ok sm" onclick="op('enable_keys',${cid})">恢复全部key</button>
+    </div>
+    ${k.length?k.map(x=>`
+      <div class="key-row">
+        <span class="kidx">#${x.index}</span>
+        <span class="kstatus">${stBadge(x.status)}</span>
+        <code>${x.key_preview||''}</code>
+        <span class="kreason" title="${(x.reason||'').replace(/"/g,'&quot;')}">${(x.reason||'')}</span>
+        ${x.status!==1?`<button class="btn ok sm" onclick="keyOp(${cid},${x.index},'enable')">启用</button>`:`<button class="btn warn sm" onclick="keyOp(${cid},${x.index},'disable')">禁用</button>`}
+      </div>`).join(''):'<span class="muted">非多key渠道或无key</span>'}
+  `;
+}
+
+async function keyOp(cid, idx, act){
+  const d = await api(`/api/channels/${cid}/key/${idx}/${act}`, {method:'POST'});
+  toast(d.message||(d.success?'成功':'失败'), d.success);
+  showKeys(cid); loadLogs();
+}
+
+async function batchOp(action, target){
+  if(!confirm(`确认对筛选目标执行 ${action}？`)) return;
+  const d = await api('/api/channels/batch', {method:'POST', body:JSON.stringify({action, target})});
+  const list = d.data||[];
+  const okN = list.filter(x=>x.ok).length;
+  toast(`批量完成: ${okN}/${list.length} 成功`);
+  loadChannels(); loadLogs();
+}
+
+// ---------- rules ----------
+async function loadRules(){
+  const d = await api('/api/rules');
+  const rules = d.data||[];
+  const tb = document.getElementById('ruleTb');
+  const tgtName = t => (t&&t.ids&&t.ids.length)?('渠道:'+t.ids.join(',')):('筛选:'+({auto_disabled:'全部自动禁用',disabled:'全部禁用(2+3)',all:'全部渠道'}[t&&t.filter]||t&&t.filter||'-'));
+  const actionName = a => ({enable_full:'一键启用', enable:'启用渠道', enable_keys:'恢复全部key', disable:'禁用', test:'测试', checkup:'巡检'}[a]||a||'-');
+  tb.innerHTML = rules.map(r => `
+    <tr>
+      <td>${r.name}</td><td>${cronDesc(r.cron)}</td>
+      <td>${actionName(r.action)}</td><td>${tgtName(r.target)}</td>
+      <td><input type="checkbox" ${r.enabled?'checked':''} onchange="setRule('${r.id}',{enabled:this.checked})"></td>
+      <td>
+        <button class="btn sm" onclick="trig('${r.id}')">立即执行</button>
+        <button class="btn danger sm" onclick="delRule('${r.id}')">删除</button>
+      </td>
+    </tr>`).join('');
+}
+
+document.getElementById('rTarget').onchange = function(){
+  document.getElementById('rIds').style.display = this.value.startsWith('ids')?'':'none';
+};
+
+// ---------- 频率选择 → cron（免手写） ----------
+(function initTimePick(){
+  const h = document.getElementById('rHour'), m = document.getElementById('rMin');
+  for(let i=0;i<24;i++) h.innerHTML += `<option value="${i}">${i}</option>`;
+  for(let i=0;i<60;i++) m.innerHTML += `<option value="${i}">${i}</option>`;
+  h.value = 8; m.value = 0; // 默认 08:00
+})();
+function onFreqChange(){
+  const f = document.getElementById('rFreq').value;
+  document.getElementById('timePick').style.display = (f==='hourly'||f==='30m') ? 'none' : '';
+}
+function freqToCron(){
+  const f = document.getElementById('rFreq').value;
+  const h = document.getElementById('rHour').value, m = document.getElementById('rMin').value;
+  switch(f){
+    case 'daily':   return m+' '+h+' * * *';
+    case 'hourly':  return '0 * * * *';
+    case '30m':     return '*/30 * * * *';
+    case 'weekly1': return m+' '+h+' * * 1';
+    case 'weekly0': return m+' '+h+' * * 0';
+    case 'monthly': return m+' '+h+' 1 * *';
+  }
+  return '0 8 * * *';
+}
+function cronDesc(c){
+  const p = (c||'').trim().split(/\s+/);
+  const w = {1:'周一',0:'周日'};
+  if(p.length===5){
+    const hm = (p[1]==='*'?'每小时':p[1]+':'+(p[0].padStart(2,'0')));
+    if(p[0]==='*/30') return '每30分钟';
+    if(p[0]==='0' && p[1]==='*') return '每小时';
+    if(p[4]==='*' && p[3]==='*') return '每天 '+hm;
+    if(p[4]!=='*') return '每周'+w[p[4]]+' '+hm;
+    if(p[3]!=='*') return '每月'+p[3]+'号 '+hm;
+  }
+  return c||'';
+}
+
+async function addRule(){
+  const targetSel = document.getElementById('rTarget').value;
+  let target = {filter: targetSel};
+  if(targetSel.startsWith('ids')){
+    const ids = document.getElementById('rIds').value.split(',').map(s=>parseInt(s)).filter(n=>!isNaN(n));
+    target = {ids};
+  }
+  const body = {
+    name: document.getElementById('rName').value || '未命名',
+    cron: freqToCron(),
+    action: document.getElementById('rAction').value,
+    target
+  };
+  const d = await api('/api/rules', {method:'POST', body:JSON.stringify(body)});
+  if(d.success){ toast('规则已创建'); document.getElementById('rName').value=''; loadRules(); }
+  else toast('创建失败: '+d.message,false);
+}
+
+async function setRule(rid, fields){ await api('/api/rules/'+rid, {method:'PUT', body:JSON.stringify(fields)}); loadRules(); }
+async function delRule(rid){ if(!confirm('删除规则?'))return; await api('/api/rules/'+rid,{method:'DELETE'}); loadRules(); }
+async function trig(rid){
+  const d = await api(`/api/rules/${rid}/trigger`, {method:'POST'});
+  toast(d.message||(d.success?'已执行':'失败'), d.success); loadLogs();
+}
+
+// ---------- logs ----------
+async function loadLogs(){
+  const d = await api('/api/logs');
+  const logs = d.data||[];
+  document.getElementById('logBox').innerHTML = logs.map(l =>
+    `<div class="${l.ok?'ok':'no'}">[${l.ts}] ${l.rule} | ${actionName(l.action)} | 渠道${l.channel??'-'} | ${l.ok?'✓':'✗'} ${l.msg}</div>`).join('') || '<span class="muted">暂无日志</span>';
+}
+
+async function loadAll(){ await loadChannels(); await loadRules(); await loadLogs(); }
+loadAll();
+setInterval(loadChannels, 30000);
+</script>
+</body>
+</html>
