@@ -3,7 +3,7 @@
 
 规则结构: {
   "id": "8位hex", "name": "规则名", "cron": "5 8 * * *",
-  "action": "enable|disable|test|checkup|enable_keys",
+  "action": "enable|disable|test|checkup|enable_keys|enable_full",
   "target": {"ids": [76]} 或 {"filter": "all|auto_disabled|disabled"},
   "enabled": true
 }
@@ -11,8 +11,9 @@
   enable      渠道启用 (status=1)
   disable     渠道禁用 (status=2)
   enable_keys 恢复该渠道全部 key
-  test        测试渠道（首个模型）
-  checkup     巡检：恢复全部 key → 测试 → 通过则启用渠道
+  enable_full 一键启用:恢复全部 key + 渠道启用(与前端/手动 API 一致)
+  test        测试渠道(首个模型)
+  checkup     巡检:恢复全部 key → 测试 → 通过则启用渠道
 """
 import json
 import os
@@ -73,6 +74,11 @@ def _run_action(action, cid):
     if action == "enable_keys":
         d = newapi.enable_all_keys(cid)
         return d.get("success"), d.get("message", "")
+    if action == "enable_full":
+        k = newapi.enable_all_keys(cid)
+        s = newapi.set_status(cid, 1)
+        ok_all = k.get("success") and s.get("success")
+        return ok_all, f"keys: {k.get('message', '')}; status: {s.get('message', '')}"
     if action == "test":
         d = newapi.test_channel(cid)
         return d.get("success"), f"time={d.get('time')}s {d.get('message', '')}".strip()
