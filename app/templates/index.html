@@ -223,12 +223,13 @@ async function batchOp(action, target){
 }
 
 // ---------- rules ----------
+const actionName = a => ({enable_full:'一键启用', enable:'启用渠道', enable_keys:'恢复全部key', disable:'禁用', test:'测试', checkup:'巡检'}[a]||a||'-');
+
 async function loadRules(){
   const d = await api('/api/rules');
   const rules = d.data||[];
   const tb = document.getElementById('ruleTb');
   const tgtName = t => (t&&t.ids&&t.ids.length)?('渠道:'+t.ids.join(',')):('筛选:'+({auto_disabled:'全部自动禁用',disabled:'全部禁用(2+3)',all:'全部渠道'}[t&&t.filter]||t&&t.filter||'-'));
-  const actionName = a => ({enable_full:'一键启用', enable:'启用渠道', enable_keys:'恢复全部key', disable:'禁用', test:'测试', checkup:'巡检'}[a]||a||'-');
   tb.innerHTML = rules.map(r => `
     <tr>
       <td>${r.name}</td><td>${cronDesc(r.cron)}</td>
